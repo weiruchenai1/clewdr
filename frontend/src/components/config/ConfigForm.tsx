@@ -161,6 +161,29 @@ const ConfigForm: React.FC<ConfigFormProps> = ({ config, onChange }) => {
         </div>
       </ConfigSection>
 
+      {/* Scheduled Check Settings Section */}
+      <ConfigSection title={t("config.sections.scheduledCheck.title")}>
+        <FormInput
+          id="check_interval_hours"
+          name="check_interval_hours"
+          type="number"
+          value={config.check_interval_hours.toString()}
+          onChange={onChange}
+          label={t("config.sections.scheduledCheck.checkInterval")}
+          placeholder="1"
+        />
+        <div className="text-sm text-gray-400 mt-1 mb-4">
+          {t("config.sections.scheduledCheck.intervalDescription")}
+        </div>
+        
+        <ConfigCheckbox
+          name="auto_refresh_cookie"
+          checked={config.auto_refresh_cookie}
+          onChange={onChange}
+          label={t("config.sections.scheduledCheck.autoRefresh")}
+        />
+      </ConfigSection>
+
       {/* Cookie Settings Section */}
       <ConfigSection title={t("config.sections.cookie.title")}>
         <ConfigCheckbox

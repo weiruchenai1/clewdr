@@ -128,6 +128,12 @@
         "preserveChats": "Preserve Chats",
         "webSearch": "Web Search"
       },
+      "scheduledCheck": {
+        "title": "Scheduled Check Settings",
+        "checkInterval": "Check Interval (Hours)",
+        "intervalDescription": "The interval for checking cookie and key status (in hours)",
+        "autoRefresh": "Auto refresh"
+      },
       "cookie": {
         "title": "Cookie Settings",
         "skipFirstWarning": "Skip First Warning",

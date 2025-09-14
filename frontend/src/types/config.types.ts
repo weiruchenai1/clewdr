@@ -29,6 +29,10 @@ export interface ConfigData {
   skip_rate_limit: boolean;
   skip_normal_pro: boolean;
 
+  // Scheduled check settings
+  check_interval_hours: number;
+  auto_refresh_cookie: boolean;
+
   // Prompt configurations
   use_real_roles: boolean;
   custom_h: string | null;

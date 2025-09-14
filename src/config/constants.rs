@@ -134,5 +134,13 @@ pub const fn default_skip_cool_down() -> bool {
     true
 }
 
+/// Default check interval for scheduled checks
+///
+/// # Returns  
+/// * `u64` - The default interval of 1 hour
+pub const fn default_check_interval() -> u64 {
+    1
+}
+
 /// Default cookie value for testing purposes
 pub const PLACEHOLDER_COOKIE: &str = "sk-ant-sid01----------------------------SET_YOUR_COOKIE_HERE----------------------------------------AAAAAAAA";

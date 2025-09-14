@@ -24,7 +24,7 @@ use super::{CONFIG_PATH, ENDPOINT_URL, key::KeyStatus};
 use crate::{
     Args,
     config::{
-        CC_CLIENT_ID, CookieStatus, UselessCookie, default_check_update, default_ip,
+        CC_CLIENT_ID, CookieStatus, UselessCookie, default_check_interval, default_check_update, default_ip,
         default_max_retries, default_port, default_skip_cool_down, default_use_real_roles,
     },
     error::ClewdrError,
@@ -126,6 +126,12 @@ pub struct ClewdrConfig {
     #[serde(default)]
     pub skip_normal_pro: bool,
 
+    // Scheduled check settings, can hot reload  
+    #[serde(default = "default_check_interval")]
+    pub check_interval_hours: u64,
+    #[serde(default)]
+    pub auto_refresh_cookie: bool,
+
     // Prompt configurations, can hot reload
     #[serde(default = "default_use_real_roles")]
     pub use_real_roles: bool,
@@ -176,6 +182,8 @@ impl Default for ClewdrConfig {
             skip_non_pro: false,
             skip_rate_limit: default_skip_cool_down(),
             skip_normal_pro: false,
+            check_interval_hours: default_check_interval(),
+            auto_refresh_cookie: false,
             claude_code_client_id: None,
             custom_system: None,
             no_fs: false,
