@@ -80,7 +80,17 @@
     },
     "noCookies": "No {{type}}",
     "deleteConfirm": "Are you sure you want to delete this cookie?",
-    "copy": "Copy to clipboard"
+    "copy": "Copy to clipboard",
+    "copySuccess": "{{type}} copied to clipboard ({{count}} cookies)",
+    "copyError": "Failed to copy to clipboard",
+    "copyButtonAll": "All",
+    "copyButtonValid": "Valid",
+    "copyButtonExhausted": "Exhausted",
+    "copyButtonInvalid": "Invalid",
+    "copyAll": "Copy all cookies",
+    "copyValid": "Copy valid cookies",
+    "copyExhausted": "Copy exhausted cookies", 
+    "copyInvalid": "Copy invalid cookies"
   },
   "config": {
     "title": "Configuration",

@@ -80,7 +80,17 @@
     },
     "noCookies": "没有{{type}}",
     "deleteConfirm": "您确定要删除此cookie吗？",
-    "copy": "复制到剪贴板"
+    "copy": "复制到剪贴板",
+    "copySuccess": "{{type}}已复制到剪贴板（{{count}}个cookie）",
+    "copyError": "复制到剪贴板失败",
+    "copyButtonAll": "全部",
+    "copyButtonValid": "有效",
+    "copyButtonExhausted": "冷却",
+    "copyButtonInvalid": "无效",
+    "copyAll": "复制全部cookie",
+    "copyValid": "复制有效cookie",
+    "copyExhausted": "复制冷却cookie",
+    "copyInvalid": "复制无效cookie"
   },
   "config": {
     "title": "配置",

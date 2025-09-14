@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { getCookieStatus, deleteCookie } from "../../api";
 import { formatTimestamp } from "../../utils/formatters";
 import { CookieStatusInfo } from "../../types/cookie.types";
+import { toast } from "react-hot-toast";
 import Button from "../common/Button";
 import LoadingSpinner from "../common/LoadingSpinner";
 import StatusMessage from "../common/StatusMessage";
@@ -52,6 +53,37 @@ const CookieVisualization: React.FC = () => {
   }, [refreshCounter]);
 
   const handleRefresh = () => setRefreshCounter((prev) => prev + 1);
+
+  // Copy to clipboard function
+  const copyToClipboard = async (cookies: any[], type: string) => {
+    try {
+      const cookieStrings = cookies.map(cookie => {
+        // Remove "sessionKey=" prefix if it exists
+        let cookieValue = cookie.cookie;
+        if (cookieValue.startsWith('sessionKey=')) {
+          cookieValue = cookieValue.replace('sessionKey=', '');
+        }
+        return cookieValue;
+      }).join('\n');
+      
+      await navigator.clipboard.writeText(cookieStrings);
+      
+      const typeLabels: Record<string, string> = {
+        all: "全部",
+        valid: "有效",
+        exhausted: "冷却", 
+        invalid: "无效"
+      };
+      
+      toast.success(`已复制 ${cookies.length} 个${typeLabels[type]} cookie`, {
+        duration: 2000,
+      });
+    } catch (err) {
+      toast.error("复制到剪贴板失败", {
+        duration: 2000,
+      });
+    }
+  };
 
   const handleDeleteCookie = async (cookie: string) => {
     if (!window.confirm(t("cookieStatus.deleteConfirm"))) return;
@@ -131,55 +163,115 @@ const CookieVisualization: React.FC = () => {
             {t("cookieStatus.total", { count: totalCookies })}
           </p>
         </div>
-        <Button
-          onClick={handleRefresh}
-          className="p-2 bg-gray-700 hover:bg-gray-600 rounded-md transition-colors text-sm"
-          disabled={loading}
-          variant="secondary"
-        >
-          {loading ? (
+        <div className="flex space-x-2">
+          {/* Copy Buttons */}
+          <Button
+            onClick={() => copyToClipboard([...cookieStatus.valid, ...cookieStatus.exhausted, ...cookieStatus.invalid], "all")}
+            className="p-2 bg-gray-700 hover:bg-gray-600 rounded-md transition-colors text-sm"
+            disabled={loading || totalCookies === 0}
+            variant="secondary"
+          >
             <span className="flex items-center">
-              <svg
-                className="animate-spin h-4 w-4 mr-2"
-                fill="none"
-                viewBox="0 0 24 24"
-              >
-                <circle
-                  className="opacity-25"
-                  cx="12"
-                  cy="12"
-                  r="10"
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+              </svg>
+              {t("cookieStatus.copyButtonAll")}
+            </span>
+          </Button>
+          
+          <Button
+            onClick={() => copyToClipboard(cookieStatus.valid, "valid")}
+            className="p-2 bg-gray-700 hover:bg-gray-600 rounded-md transition-colors text-sm"
+            disabled={loading || cookieStatus.valid.length === 0}
+            variant="secondary"
+          >
+            <span className="flex items-center">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+              </svg>
+              {t("cookieStatus.copyButtonValid")}
+            </span>
+          </Button>
+
+          <Button
+            onClick={() => copyToClipboard(cookieStatus.exhausted, "exhausted")}
+            className="p-2 bg-gray-700 hover:bg-gray-600 rounded-md transition-colors text-sm"
+            disabled={loading || cookieStatus.exhausted.length === 0}
+            variant="secondary"
+          >
+            <span className="flex items-center">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+              </svg>
+              {t("cookieStatus.copyButtonExhausted")}
+            </span>
+          </Button>
+
+          <Button
+            onClick={() => copyToClipboard(cookieStatus.invalid, "invalid")}
+            className="p-2 bg-gray-700 hover:bg-gray-600 rounded-md transition-colors text-sm"
+            disabled={loading || cookieStatus.invalid.length === 0}
+            variant="secondary"
+          >
+            <span className="flex items-center">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+              </svg>
+              {t("cookieStatus.copyButtonInvalid")}
+            </span>
+          </Button>
+
+          {/* Refresh Button */}
+          <Button
+            onClick={handleRefresh}
+            className="p-2 bg-gray-700 hover:bg-gray-600 rounded-md transition-colors text-sm"
+            disabled={loading}
+            variant="secondary"
+          >
+            {loading ? (
+              <span className="flex items-center">
+                <svg
+                  className="animate-spin h-4 w-4 mr-2"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                >
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                  ></circle>
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                  ></path>
+                </svg>
+                {t("cookieStatus.refreshing")}
+              </span>
+            ) : (
+              <span className="flex items-center">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-4 w-4 mr-2"
+                  fill="none"
+                  viewBox="0 0 24 24"
                   stroke="currentColor"
-                  strokeWidth="4"
-                ></circle>
-                <path
-                  className="opacity-75"
-                  fill="currentColor"
-                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                ></path>
-              </svg>
-              {t("cookieStatus.refreshing")}
-            </span>
-          ) : (
-            <span className="flex items-center">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="h-4 w-4 mr-2"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                />
-              </svg>
-              {t("cookieStatus.refresh")}
-            </span>
-          )}
-        </Button>
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                  />
+                </svg>
+                {t("cookieStatus.refresh")}
+              </span>
+            )}
+          </Button>
+        </div>
       </div>
 
       {/* Error Display */}
