@@ -141,7 +141,7 @@
       "scheduledCheck": {
         "title": "定时检查设置",
         "checkInterval": "检查间隔（小时）",
-        "intervalDescription": "检查cookie和key状态的间隔时间（小时）",
+        "intervalDescription": "检查cookie状态的间隔时间（小时）",
         "autoRefresh": "自动刷新"
       },
       "cookie": {

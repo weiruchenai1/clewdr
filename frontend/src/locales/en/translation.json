@@ -141,7 +141,7 @@
       "scheduledCheck": {
         "title": "Scheduled Check Settings",
         "checkInterval": "Check Interval (Hours)",
-        "intervalDescription": "The interval for checking cookie and key status (in hours)",
+        "intervalDescription": "The interval for checking cookie status (in hours)",
         "autoRefresh": "Auto refresh"
       },
       "cookie": {
