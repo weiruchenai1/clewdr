@@ -16,7 +16,7 @@ use crate::{
         RequireAdminAuth, RequireBearerAuth, RequireQueryKeyAuth, RequireXApiKeyAuth,
         claude::{add_usage_info, apply_stop_sequences, check_overloaded, to_oai},
     },
-    services::{auto_refresh::AutoRefreshService, cookie_actor::CookieActorHandle, key_actor::KeyActorHandle},
+    services::{cookie_actor::CookieActorHandle, key_actor::KeyActorHandle},
 };
 
 /// RouterBuilder for the application
@@ -45,10 +45,6 @@ impl RouterBuilder {
             .await
             .expect("Failed to start KeyActorHandle");
         let gemini_state = GeminiState::new(key_tx.to_owned());
-        
-        // Start auto refresh service
-        let auto_refresh_service = AutoRefreshService::new(cookie_handle.to_owned());
-        auto_refresh_service.start().await;
         
         RouterBuilder {
             claude_web_state,

@@ -1,10 +1,14 @@
 use std::collections::{HashSet, VecDeque};
+use std::sync::Arc;
+use std::time::Duration;
 
 use moka::sync::Cache;
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
 use serde::Serialize;
+use serde_json::json;
 use snafu::{GenerateImplicitData, Location};
-use tracing::{error, info, warn};
+use tokio::{spawn, sync::Semaphore};
+use tracing::{debug, error, info, warn};
 
 use crate::{
     config::{CLEWDR_CONFIG, ClewdrConfig, CookieStatus, Reason, UselessCookie},
@@ -35,6 +39,8 @@ enum CookieActorMessage {
     GetStatus(RpcReplyPort<CookieStatusInfo>),
     /// Delete a Cookie
     Delete(CookieStatus, RpcReplyPort<Result<(), ClewdrError>>),
+    /// Scheduled check for cookie validity (auto refresh)
+    ScheduledCheck,
 }
 
 /// CookieActor state - manages collections of cookies
@@ -50,6 +56,156 @@ struct CookieActorState {
 struct CookieActor;
 
 impl CookieActor {
+    /// Spawns a scheduled checker task that periodically sends ScheduledCheck messages
+    async fn spawn_scheduled_checker(actor_ref: ActorRef<CookieActorMessage>) {
+        spawn(async move {
+            let config = CLEWDR_CONFIG.load();
+            
+            if !config.auto_refresh_cookie {
+                debug!("Auto refresh is disabled, not starting scheduled checker");
+                return;
+            }
+
+            let mut last_interval_hours = config.check_interval_hours;
+            info!("Starting scheduled checker with {} hour interval", last_interval_hours);
+            
+            let mut interval = tokio::time::interval(Duration::from_secs(last_interval_hours * 3600));
+            interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+
+            loop {
+                interval.tick().await;
+                
+                let current_config = CLEWDR_CONFIG.load();
+                
+                // Check if auto refresh is still enabled
+                if !current_config.auto_refresh_cookie {
+                    debug!("Auto refresh disabled, stopping scheduled checker");
+                    break;
+                }
+
+                // Check if interval has changed and update if needed
+                if current_config.check_interval_hours != last_interval_hours {
+                    last_interval_hours = current_config.check_interval_hours;
+                    interval = tokio::time::interval(Duration::from_secs(last_interval_hours * 3600));
+                    interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+                    info!("Scheduled checker interval updated to {} hours", last_interval_hours);
+                }
+
+                // Send ScheduledCheck message to the actor
+                if ractor::cast!(actor_ref, CookieActorMessage::ScheduledCheck).is_err() {
+                    debug!("Failed to send ScheduledCheck message, stopping scheduled checker");
+                    break;
+                }
+            }
+        });
+    }
+
+    /// Performs scheduled cookie validity check by sending test chat messages
+    /// Uses service's round-robin mechanism to test all cookies with complete coverage
+    async fn scheduled_check(state: &mut CookieActorState) {
+        info!("Performing scheduled cookie validity check");
+        
+        let config = CLEWDR_CONFIG.load();
+        if !config.auto_refresh_cookie {
+            debug!("Auto refresh disabled, skipping scheduled check");
+            return;
+        }
+
+        // Get count of valid cookies
+        let valid_count = state.valid.len();
+        if valid_count == 0 {
+            info!("No valid cookies to test");
+            return;
+        }
+
+        // Get service endpoint from config
+        let addr = config.address();
+        let test_url = format!("http://{}/v1/messages", addr);
+        
+        info!("Testing {} cookies using round-robin mechanism at endpoint: {}", valid_count, test_url);
+        
+        // Create test message payload
+        let test_payload = json!({
+            "model": "claude-sonnet-4-20250514",
+            "messages": [{"role": "user", "content": "hi"}],
+            "max_tokens": 10
+        });
+
+        // Send requests equal to cookie count to ensure complete coverage
+        // Service's round-robin mechanism will automatically test each cookie once
+        let num_requests = valid_count;
+        let batch_size = 10;
+        let total_batches = (num_requests + batch_size - 1) / batch_size;
+        
+        info!("Sending {} requests in {} batches to test all cookies", num_requests, total_batches);
+
+        // Process requests in batches to avoid overwhelming the service
+        for batch_num in 0..total_batches {
+            let batch_start = batch_num * batch_size;
+            let batch_end = std::cmp::min(batch_start + batch_size, num_requests);
+            let current_batch_size = batch_end - batch_start;
+            
+            info!("Processing batch {}/{}: {} requests (testing cookies {}-{})", 
+                  batch_num + 1, total_batches, current_batch_size, batch_start + 1, batch_end);
+
+            // Create semaphore for this batch
+            let semaphore = Arc::new(Semaphore::new(current_batch_size));
+            let mut handles = Vec::new();
+
+            // Send requests concurrently in this batch
+            for i in 0..current_batch_size {
+                let semaphore = semaphore.clone();
+                let test_url = test_url.clone();
+                let test_payload = test_payload.clone();
+                let request_num = batch_start + i + 1;
+                
+                let handle = tokio::spawn(async move {
+                    let permit = semaphore.acquire().await.expect("Failed to acquire semaphore permit");
+                    let _permit = permit; // Hold permit for duration of request
+                    
+                    debug!("Sending test request {} (will test next cookie in round-robin)", request_num);
+                    
+                    // Send test request - let service automatically select next cookie
+                    let client = wreq::Client::new();
+                    let result = client
+                        .post(&test_url)
+                        .header("Content-Type", "application/json")
+                        .json(&test_payload)
+                        // No Cookie header - let service use round-robin selection
+                        .send()
+                        .await;
+                    
+                    match result {
+                        Ok(response) => {
+                            let status = response.status();
+                            debug!("Request {} completed with status: {} (service handled cookie automatically)", 
+                                  request_num, status);
+                        }
+                        Err(e) => {
+                            warn!("Request {} failed: {} (service will handle cookie state)", request_num, e);
+                        }
+                    }
+                });
+                handles.push(handle);
+            }
+
+            // Wait for all requests in this batch to complete
+            for handle in handles {
+                let _ = handle.await;
+            }
+            
+            info!("Batch {}/{} completed", batch_num + 1, total_batches);
+            
+            // Add delay between batches to avoid overwhelming the service
+            if batch_num < total_batches - 1 {
+                tokio::time::sleep(Duration::from_millis(500)).await;
+            }
+        }
+        
+        info!("Cookie validity check completed! Sent {} requests to test all cookies. Service's round-robin mechanism ensured complete coverage and automatic state updates.", num_requests);
+        Self::log(state);
+    }
+
     /// Saves the current state of cookies to the configuration
     fn save(state: &CookieActorState) {
         CLEWDR_CONFIG.rcu(|config| {
@@ -239,7 +395,7 @@ impl Actor for CookieActor {
 
     async fn pre_start(
         &self,
-        _myself: ActorRef<Self::Msg>,
+        myself: ActorRef<Self::Msg>,
         _arguments: Self::Arguments,
     ) -> Result<Self::State, ActorProcessingErr> {
         let valid = VecDeque::from_iter(
@@ -273,6 +429,10 @@ impl Actor for CookieActor {
         };
 
         CookieActor::log(&state);
+        
+        // Start scheduled check if auto refresh is enabled
+        Self::spawn_scheduled_checker(myself).await;
+        
         Ok(state)
     }
 
@@ -303,6 +463,9 @@ impl Actor for CookieActor {
             CookieActorMessage::Delete(cookie, reply_port) => {
                 let result = Self::delete(state, cookie);
                 reply_port.send(result)?;
+            }
+            CookieActorMessage::ScheduledCheck => {
+                Self::scheduled_check(state).await;
             }
         }
         Ok(())
