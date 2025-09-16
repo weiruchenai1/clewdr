@@ -5,7 +5,7 @@ services:
     hostname: clewdr
     volumes:
       - ./clewdr.toml:/app/clewdr.toml
-      - ./log:/app/log                  # 添加日志持久化
+      - ./log:/app/log
     network_mode: host
     restart: unless-stopped
     environment:
