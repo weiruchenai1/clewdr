@@ -264,6 +264,11 @@ impl ClewdrConfig {
         key == self.admin_password
     }
 
+    /// Get the API password
+    pub fn get_password(&self) -> &str {
+        &self.password
+    }
+
     pub fn cc_client_id(&self) -> String {
         self.claude_code_client_id
             .as_deref()

@@ -7,11 +7,11 @@ use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
 use serde::Serialize;
 use serde_json::json;
 use snafu::{GenerateImplicitData, Location};
-use tokio::{spawn, sync::Semaphore};
+use tokio::spawn;
 use tracing::{debug, error, info, warn};
 
 use crate::{
-    config::{CLEWDR_CONFIG, ClewdrConfig, CookieStatus, Reason, UselessCookie, CONFIG_PATH},
+    config::{CLEWDR_CONFIG, ClewdrConfig, CookieStatus, Reason, UselessCookie},
     error::ClewdrError,
 };
 
@@ -58,7 +58,7 @@ struct CookieActor;
 impl CookieActor {
     /// Gets API password from global configuration
     fn get_api_password() -> String {
-        CLEWDR_CONFIG.load().password.clone()
+        CLEWDR_CONFIG.load().get_password().to_string()
     }
 
     /// Performs scheduled cookie validity check
