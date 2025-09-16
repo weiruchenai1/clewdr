@@ -1,0 +1,17 @@
+services:
+  clewdr:
+    image: ghcr.io/weiruchenai1/clewdr:latest
+    container_name: clewdr
+    hostname: clewdr
+    volumes:
+      - ./clewdr.toml:/app/clewdr.toml
+      - ./log:/app/log                  # 添加日志持久化
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      - TZ=Asia/Shanghai                  # 设置时区
+    healthcheck:                          # 添加健康检查
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8484/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
