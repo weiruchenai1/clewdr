@@ -56,34 +56,128 @@ struct CookieActorState {
 struct CookieActor;
 
 impl CookieActor {
-    /// Reads API password directly from clewdr.toml file
-    /// This is simpler than using the complex configuration system
-    async fn read_api_password() -> Result<String, String> {
-        use std::fs;
-        use toml::Value;
-
-        let config_content = fs::read_to_string(&*CONFIG_PATH)
-            .map_err(|e| format!("Failed to read config file: {}", e))?;
-
-        let config: Value = toml::from_str(&config_content)
-            .map_err(|e| format!("Failed to parse config: {}", e))?;
-
-        config
-            .get("password")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string())
-            .ok_or_else(|| "Password not found in config".to_string())
+    /// Gets API password from global configuration
+    fn get_api_password() -> String {
+        CLEWDR_CONFIG.load().password.clone()
     }
-    /// Spawns a scheduled checker task that periodically sends ScheduledCheck messages
-    async fn spawn_scheduled_checker(actor_ref: ActorRef<CookieActorMessage>) {
-        spawn(async move {
-            let config = CLEWDR_CONFIG.load();
+
+    /// Performs scheduled cookie validity check
+    async fn perform_scheduled_check() {
+        let config = CLEWDR_CONFIG.load();
+        if !config.auto_refresh_cookie {
+            debug!("Auto refresh disabled, skipping scheduled check");
+            return;
+        }
+
+        info!("Spawning scheduled cookie validity check task");
+        let addr = config.address();
+        let test_url = format!("http://{}/v1/messages", addr);
+        
+        tokio::spawn(async move {
+            // Get API password from global configuration
+            let api_password = CookieActor::get_api_password();
             
-            if !config.auto_refresh_cookie {
-                debug!("Auto refresh is disabled, not starting scheduled checker");
+            if api_password.is_empty() {
+                warn!("API password is empty. Cookie testing may fail.");
                 return;
             }
+            
+            // Get cookie count from current state - we'll estimate based on config
+            let current_config = CLEWDR_CONFIG.load();
+            let valid_count = current_config.cookie_array.len();
+            if valid_count == 0 {
+                info!("No cookies configured, skipping scheduled check");
+                return;
+            }
+            
+            info!("Testing {} cookies using round-robin mechanism at endpoint: {}", valid_count, test_url);
+            
+            // Create test message payload
+            let test_payload = json!({
+                "model": "claude-sonnet-4-20250514",
+                "messages": [{"role": "user", "content": "hi"}],
+                "max_tokens": 10
+            });
 
+            // Send requests equal to cookie count to ensure complete coverage
+            let num_requests = valid_count;
+            let batch_size = 10;
+            let total_batches = (num_requests + batch_size - 1) / batch_size;
+            
+            info!("Sending {} requests in {} batches to test all cookies", num_requests, total_batches);
+
+            // Create shared HTTP client for reuse
+            let client = Arc::new(wreq::Client::new());
+
+            // Process requests in batches to avoid overwhelming the service
+            for batch_num in 0..total_batches {
+                let batch_start = batch_num * batch_size;
+                let batch_end = std::cmp::min(batch_start + batch_size, num_requests);
+                let current_batch_size = batch_end - batch_start;
+                
+                info!("Processing batch {}/{}: {} requests (testing cookies {}-{})", 
+                      batch_num + 1, total_batches, current_batch_size, batch_start + 1, batch_end);
+
+                // Create futures for concurrent requests
+                let futures: Vec<_> = (0..current_batch_size).map(|i| {
+                    let client = client.clone();
+                    let test_url = test_url.clone();
+                    let test_payload = test_payload.clone();
+                    let api_password = api_password.clone();
+                    let request_num = batch_start + i + 1;
+                    
+                    async move {
+                        debug!("Sending test request {} (will test next cookie in round-robin)", request_num);
+                        
+                        // Send test request - let service automatically select next cookie
+                        let result = client
+                            .post(&test_url)
+                            .header("x-api-key", &api_password)
+                            .json(&test_payload)
+                            // No Cookie header - let service use round-robin selection
+                            .send()
+                            .await;
+                        
+                        match result {
+                            Ok(response) => {
+                                let status = response.status();
+                                // Get response body for debugging
+                                let body_text = response.text().await.unwrap_or_else(|_| "Failed to read response body".to_string());
+                                if status.is_success() {
+                                    debug!("Request {} SUCCESS ({}): response body: {}", 
+                                          request_num, status, &body_text[..body_text.len().min(200)]);
+                                } else {
+                                    warn!("Request {} FAILED ({}): response body: {}", 
+                                         request_num, status, &body_text[..body_text.len().min(500)]);
+                                }
+                            }
+                            Err(e) => {
+                                warn!("Request {} ERROR: {} (service will handle cookie state)", request_num, e);
+                            }
+                        }
+                    }
+                }).collect();
+
+                // Use buffer_unordered for controlled concurrency
+                use futures::stream::{self, StreamExt};
+                let mut stream = stream::iter(futures).buffer_unordered(current_batch_size);
+                while stream.next().await.is_some() {}
+                
+                info!("Batch {}/{} completed", batch_num + 1, total_batches);
+                
+                // Add delay between batches to avoid overwhelming the service
+                if batch_num < total_batches - 1 {
+                    tokio::time::sleep(Duration::from_millis(500)).await;
+                }
+            }
+            
+            info!("Cookie validity check completed! Sent {} requests to test all cookies. Service's round-robin mechanism ensured complete coverage and automatic state updates.", num_requests);
+        });
+    }
+    /// Spawns a scheduled checker task that periodically sends ScheduledCheck messages
+    fn spawn_scheduled_checker(actor_ref: ActorRef<CookieActorMessage>) {
+        spawn(async move {
+            let config = CLEWDR_CONFIG.load();
             let mut last_interval_hours = config.check_interval_hours;
             info!("Starting scheduled checker with {} hour interval", last_interval_hours);
             
@@ -110,8 +204,8 @@ impl CookieActor {
                 }
 
                 // Send ScheduledCheck message to the actor
-                if ractor::cast!(actor_ref, CookieActorMessage::ScheduledCheck).is_err() {
-                    debug!("Failed to send ScheduledCheck message, stopping scheduled checker");
+                if let Err(e) = ractor::cast!(actor_ref, CookieActorMessage::ScheduledCheck) {
+                    debug!("Failed to send ScheduledCheck message: {}, stopping scheduled checker", e);
                     break;
                 }
             }
@@ -343,7 +437,7 @@ impl Actor for CookieActor {
         CookieActor::log(&state);
         
         // Start scheduled check if auto refresh is enabled
-        Self::spawn_scheduled_checker(myself).await;
+        Self::spawn_scheduled_checker(myself);
         
         Ok(state)
     }
@@ -377,132 +471,7 @@ impl Actor for CookieActor {
                 reply_port.send(result)?;
             }
             CookieActorMessage::ScheduledCheck => {
-                // Spawn the check in a separate task to avoid blocking the actor
-                let config = CLEWDR_CONFIG.load();
-                if !config.auto_refresh_cookie {
-                    debug!("Auto refresh disabled, skipping scheduled check");
-                    return Ok(());
-                }
-
-                info!("Spawning scheduled cookie validity check task");
-                let addr = config.address();
-                let test_url = format!("http://{}/v1/messages", addr);
-                
-                tokio::spawn(async move {
-                    // Read API password directly from toml file
-                    let api_password = CookieActor::read_api_password().await.unwrap_or_else(|e| {
-                        warn!("Failed to read API password: {}. Cookie testing may fail.", e);
-                        String::new()
-                    });
-                    
-                    // Debug: compare with runtime config password
-                    let current_config = CLEWDR_CONFIG.load();
-                    let runtime_password_matches = current_config.user_auth(&api_password);
-                    info!("API password from file: {}... (matches runtime: {})", 
-                          &api_password[..10.min(api_password.len())], runtime_password_matches);
-                    
-                    if !runtime_password_matches {
-                        warn!("API password from toml file doesn't match runtime config! This will cause 401 errors.");
-                        return;
-                    }
-                    
-                    // Get cookie count from current state - we'll estimate based on config
-                    let valid_count = current_config.cookie_array.len();
-                    if valid_count == 0 {
-                        info!("No cookies configured, skipping scheduled check");
-                        return;
-                    }
-                    
-                    info!("Testing {} cookies using round-robin mechanism at endpoint: {}", valid_count, test_url);
-                    
-                    // Create test message payload
-                    let test_payload = json!({
-                        "model": "claude-sonnet-4-20250514",
-                        "messages": [{"role": "user", "content": "hi"}],
-                        "max_tokens": 10
-                    });
-
-                    // Send requests equal to cookie count to ensure complete coverage
-                    let num_requests = valid_count;
-                    let batch_size = 10;
-                    let total_batches = (num_requests + batch_size - 1) / batch_size;
-                    
-                    info!("Sending {} requests in {} batches to test all cookies", num_requests, total_batches);
-
-                    // Process requests in batches to avoid overwhelming the service
-                    for batch_num in 0..total_batches {
-                        let batch_start = batch_num * batch_size;
-                        let batch_end = std::cmp::min(batch_start + batch_size, num_requests);
-                        let current_batch_size = batch_end - batch_start;
-                        
-                        info!("Processing batch {}/{}: {} requests (testing cookies {}-{})", 
-                              batch_num + 1, total_batches, current_batch_size, batch_start + 1, batch_end);
-
-                        // Create semaphore for this batch
-                        let semaphore = Arc::new(Semaphore::new(current_batch_size));
-                        let mut handles = Vec::new();
-
-                        // Send requests concurrently in this batch
-                        for i in 0..current_batch_size {
-                            let semaphore = semaphore.clone();
-                            let test_url = test_url.clone();
-                            let test_payload = test_payload.clone();
-                            let api_password = api_password.clone();
-                            let request_num = batch_start + i + 1;
-                            
-                            let handle = tokio::spawn(async move {
-                                let permit = semaphore.acquire().await.expect("Failed to acquire semaphore permit");
-                                let _permit = permit; // Hold permit for duration of request
-                                
-                                debug!("Sending test request {} (will test next cookie in round-robin)", request_num);
-                                
-                                // Send test request - let service automatically select next cookie
-                                let client = wreq::Client::new();
-                                let result = client
-                                    .post(&test_url)
-                                    .header("Content-Type", "application/json")
-                                    .header("x-api-key", &api_password)
-                                    .json(&test_payload)
-                                    // No Cookie header - let service use round-robin selection
-                                    .send()
-                                    .await;
-                                
-                                match result {
-                                    Ok(response) => {
-                                        let status = response.status();
-                                        // Get response body for debugging
-                                        let body_text = response.text().await.unwrap_or_else(|_| "Failed to read response body".to_string());
-                                        if status.is_success() {
-                                            debug!("Request {} SUCCESS ({}): response body: {}", 
-                                                  request_num, status, &body_text[..body_text.len().min(200)]);
-                                        } else {
-                                            warn!("Request {} FAILED ({}): response body: {}", 
-                                                 request_num, status, &body_text[..body_text.len().min(500)]);
-                                        }
-                                    }
-                                    Err(e) => {
-                                        warn!("Request {} ERROR: {} (service will handle cookie state)", request_num, e);
-                                    }
-                                }
-                            });
-                            handles.push(handle);
-                        }
-
-                        // Wait for all requests in this batch to complete
-                        for handle in handles {
-                            let _ = handle.await;
-                        }
-                        
-                        info!("Batch {}/{} completed", batch_num + 1, total_batches);
-                        
-                        // Add delay between batches to avoid overwhelming the service
-                        if batch_num < total_batches - 1 {
-                            tokio::time::sleep(Duration::from_millis(500)).await;
-                        }
-                    }
-                    
-                    info!("Cookie validity check completed! Sent {} requests to test all cookies. Service's round-robin mechanism ensured complete coverage and automatic state updates.", num_requests);
-                });
+                Self::perform_scheduled_check().await;
             }
         }
         Ok(())
@@ -545,7 +514,8 @@ impl CookieActorHandle {
             let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(INTERVAL));
             loop {
                 interval.tick().await;
-                if ractor::cast!(actor_ref, CookieActorMessage::CheckReset).is_err() {
+                if let Err(e) = ractor::cast!(actor_ref, CookieActorMessage::CheckReset) {
+                    debug!("Failed to send CheckReset message: {}, stopping timeout checker", e);
                     break;
                 }
             }
