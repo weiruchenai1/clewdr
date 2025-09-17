@@ -1,0 +1,42 @@
+wasted_cookie = []
+ip = "0.0.0.0"
+port = 8484
+check_update = true
+auto_update = false
+password = "API秘钥"
+admin_password = "前端管理密码"
+proxy = "代理proxy"
+max_retries = 5
+preserve_chats = false
+web_search = false
+cache_response = 0
+not_hash_system = false
+not_hash_last_n = 0
+skip_first_warning = false
+skip_second_warning = false
+skip_restricted = false
+skip_non_pro = false
+skip_rate_limit = true
+skip_normal_pro = false
+check_interval_hours = 1
+auto_refresh_cookie = false
+use_real_roles = true
+custom_prompt = ""
+padtxt_len = 4000
+
+[vertex]
+# 配置示例
+# Claude Pro Cookie 配置
+[[cookie_array]]
+cookie = "Claude Pro Cookie 1" # 第一个 Claude Pro Cookie
+
+# Claude Pro Cookie 配置
+[[cookie_array]]
+cookie = "Claude Pro Cookie 2" # 第二个 Claude Pro Cookie(可选，没有则删除)
+
+# 多 Gemini key 配置
+[[gemini_keys]]
+key = "GEMINI KEY 1"           # 第一个 Gemini API 密钥
+
+[[gemini_keys]]
+key = "GEMINI KEY 2"           # 第二个 Gemini API 密钥(可选，没有则删除)
