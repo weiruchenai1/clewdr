@@ -1,42 +1,62 @@
-wasted_cookie = []
-ip = "0.0.0.0"
-port = 8484
-check_update = true
-auto_update = false
-password = "API秘钥"
-admin_password = "前端管理密码"
-proxy = "代理proxy"
-max_retries = 5
-preserve_chats = false
-web_search = false
-cache_response = 0
-not_hash_system = false
-not_hash_last_n = 0
-skip_first_warning = false
-skip_second_warning = false
-skip_restricted = false
-skip_non_pro = false
-skip_rate_limit = true
-skip_normal_pro = false
-check_interval_hours = 1
-auto_refresh_cookie = false
-use_real_roles = true
-custom_prompt = ""
-padtxt_len = 4000
+# 服务器设置
+ip = "127.0.0.1"                # 服务器绑定IP地址，127.0.0.1表示只允许本地访问，公网访问需改为0.0.0.0
+port = 8484                     # 服务器监听端口号
 
+# 应用设置
+check_update = true             # 启动时检查是否有新版本可用
+auto_update = false             # 不自动下载安装更新，需手动确认
+
+# 日志设置
+no_fs = false                   # 是否禁用文件系统访问功能
+log_to_file = false             # 是否将日志输出到文件，false表示只在控制台显示
+
+# 网络设置
+password = "API秘钥"            # API接口调用认证密钥
+admin_password = "前端管理密码"   # 管理员登录密码
+
+# API设置
+max_retries = 5                 # API请求失败时的最大重试次数
+preserve_chats = false          # 不保存用户的聊天历史记录
+web_search = false              # 禁用网络搜索功能
+
+# Cookie设置
+skip_first_warning = false      # 不跳过一次警告（小黄）
+skip_second_warning = false     # 不跳过二次警告（小黄）
+skip_restricted = false         # 不跳过受限（大黄）
+skip_non_pro = false            # 不跳过正常Pro（大黄仙人特供）
+skip_rate_limit = true          # 跳过冷却
+skip_normal_pro = false         # 不跳过普号
+
+# 定时检查设置
+check_interval_hours = 1        # 检查间隔（1小时）
+auto_refresh_cookie = false     # 不自动刷新
+
+# 提示配置
+use_real_roles = true           # 使用真实角色
+custom_prompt = ""              # 自定义提示词，空值表示无提示词
+
+# Vertex 设置
 [vertex]
-# 配置示例
-# Claude Pro Cookie 配置
-[[cookie_array]]
-cookie = "Claude Pro Cookie 1" # 第一个 Claude Pro Cookie
 
-# Claude Pro Cookie 配置
+# 有效的Claude Pro Cookie 配置
 [[cookie_array]]
-cookie = "Claude Pro Cookie 2" # 第二个 Claude Pro Cookie(可选，没有则删除)
+cookie = "Claude Pro Cookie 1"  # 第一个Claude Pro Cookie
+
+[[cookie_array]]
+cookie = "Claude Pro Cookie 2"  # 第二个Claude Pro cookie
+
+# 无效的Claude Pro Cookie 配置
+[[wasted_cookie]]
+cookie = "Claude Pro Cookie 3"  # 第三个Claude Pro cookie（已失效）
+reason = "Null"                 # 失效原因：空值/未知原因
+
+[[wasted_cookie]]
+cookie = "Claude Pro Cookie 4"  # 第四个Claude Pro cookie（已失效）
+reason = "Null"                 # 失效原因：空值/未知原因
 
 # 多 Gemini key 配置
 [[gemini_keys]]
-key = "GEMINI KEY 1"           # 第一个 Gemini API 密钥
+key = "GEMINI KEY 1"            # 第一个Google Gemini API访问密钥
 
 [[gemini_keys]]
-key = "GEMINI KEY 2"           # 第二个 Gemini API 密钥(可选，没有则删除)
+key = "GEMINI KEY 2"            # 第二个Google Gemini API密钥（备用）
