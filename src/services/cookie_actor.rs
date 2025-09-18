@@ -76,12 +76,13 @@ impl CookieActor {
 
    /// Performs scheduled cookie validity check
    async fn perform_scheduled_check() {
-       let _cleanup_guard = CleanupGuard::new();
-       
        let config = CLEWDR_CONFIG.load();
        if !config.auto_refresh_cookie {
+           debug!("自动刷新已禁用，跳过检查");
            return;
        }
+
+       let _cleanup_guard = CleanupGuard::new();
 
        let addr = config.address();
        let test_url = format!("http://{}/v1/messages", addr);
