@@ -183,16 +183,21 @@ impl CookieActor {
             
             let mut interval = tokio::time::interval(Duration::from_secs(last_interval_hours * 3600));
             interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            
+            // Skip the first immediate tick to avoid triggering on restart
+            interval.tick().await;
 
             loop {
                 interval.tick().await;
                 
                 let current_config = CLEWDR_CONFIG.load();
                 
-                // Check if auto refresh is still enabled
+                // Check if auto refresh is still enabled - if disabled, wait instead of exiting
                 if !current_config.auto_refresh_cookie {
-                    debug!("Auto refresh disabled, stopping scheduled checker");
-                    break;
+                    debug!("Auto refresh disabled, waiting for re-enable...");
+                    // Wait 5 minutes before checking again
+                    tokio::time::sleep(Duration::from_secs(300)).await;
+                    continue;
                 }
 
                 // Check if interval has changed and update if needed
@@ -200,6 +205,8 @@ impl CookieActor {
                     last_interval_hours = current_config.check_interval_hours;
                     interval = tokio::time::interval(Duration::from_secs(last_interval_hours * 3600));
                     interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+                    // Skip the first immediate tick after recreating interval
+                    interval.tick().await;
                     info!("Scheduled checker interval updated to {} hours", last_interval_hours);
                 }
 
@@ -436,7 +443,7 @@ impl Actor for CookieActor {
 
         CookieActor::log(&state);
         
-        // Start scheduled check if auto refresh is enabled
+        // Always start scheduled checker - it will handle auto_refresh_cookie state internally
         Self::spawn_scheduled_checker(myself);
         
         Ok(state)
